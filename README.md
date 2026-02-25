@@ -8,5 +8,7 @@ Steps to build project
 Steps for offline build
 -------------------------
 ./gradlew clean build --refresh-dependencies
+
 rsync -av ~/.gradle/caches/modules-2/files-2.1/ offline-repo/
+
 ./gradlew clean build --offline
