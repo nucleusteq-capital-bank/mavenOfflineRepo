@@ -12,9 +12,6 @@ Steps for offline build
 rsync -av ~/.gradle/caches/modules-2/files-2.1/ offline-repo/
 
 Windows: 
-robocopy "%USERPROFILE%\.gradle\caches\modules-2\files-2.1" offline-repo /E
-robocopy "%USERPROFILE%\.gradle\caches\modules-2\files-2.1" offline-repo /E
-
 robocopy "%USERPROFILE%\.gradle\caches\modules-2\files-2.1" "offline-repo" /E
 
 ./gradlew clean build --offline
