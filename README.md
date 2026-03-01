@@ -7,11 +7,10 @@ Steps to build project
 
 Steps for offline build
 -------------------------
-./gradlew clean build --refresh-dependencies
+./gradlew clean bootstrapOfflineRepo \                   
+  -PrepoMode=bootstrap \
+  -PofflineRepoDir=offline-repo
 
-rsync -av ~/.gradle/caches/modules-2/files-2.1/ offline-repo/
-
-Windows: 
-robocopy "%USERPROFILE%\.gradle\caches\modules-2\files-2.1" "offline-repo" /E
-
-./gradlew clean build --offline
+  Verficiation
+  ------------
+  ./gradlew verifyOfflineRepo -PofflineRepoDir=offline-repo
