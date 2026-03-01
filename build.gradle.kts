@@ -1,5 +1,11 @@
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
+import org.gradle.api.attributes.Category
+import org.gradle.api.attributes.DocsType
+import java.io.File
+
 plugins {
-    java
+    `java-library`
 }
 
 java {
@@ -8,76 +14,166 @@ java {
     }
 }
 
+/**
+ * Spring Boot version whose dependency graph we want offline
+ */
+val springBootVersion = "4.0.2"
+
+/**
+ * Offline Maven repo directory
+ */
+val offlineRepoDir: File =
+    providers.gradleProperty("offlineRepoDir")
+        .orElse("offline-repo")
+        .map { File(rootDir, it).absoluteFile }
+        .get()
+
+/**
+ * IMPORTANT:
+ * Repositories are controlled from settings.gradle.kts
+ * via dependencyResolutionManagement + repoMode
+ */
 repositories {
-    // TEMPORARILY keep this while refreshing dependencies
-    mavenCentral()
-
-    // Offline repo (kept for later)
-    maven {
-        setUrl(uri("${rootDir}/offline-repo"))
-    }
+    // intentionally empty
 }
 
+/**
+ * Dependencies to make available offline (full transitive closure)
+ */
 dependencies {
+    implementation(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
 
-    // =========================
-    // Spring Boot BOM (CRITICAL)
-    // =========================
-    implementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.6"))
-
-    // =========================
-    // Spring Boot Starters
-    // =========================
-    implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    implementation("org.springframework.boot:spring-boot-starter-validation")
 
-    // =========================
-    // MSSQL JDBC
-    // =========================
-    runtimeOnly("com.microsoft.sqlserver:mssql-jdbc:13.2.1.jre11")
-
-    // =========================
-    // Lombok (NOT managed by Boot BOM)
-    // =========================
-    compileOnly("org.projectlombok:lombok:1.18.34")
-    annotationProcessor("org.projectlombok:lombok:1.18.34")
-
-    testCompileOnly("org.projectlombok:lombok:1.18.34")
-    testAnnotationProcessor("org.projectlombok:lombok:1.18.34")
-
-    // =========================
-    // Okta
-    // =========================
-    implementation("com.okta.spring:okta-spring-boot-starter:3.0.6")
-
-    // =========================
-    // OpenAPI
-    // =========================
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.13")
-
-    // =========================
-    // Flyway
-    // =========================
-    implementation("org.flywaydb:flyway-core:11.15.0")
-
-    // =========================
-    // Commons CSV
-    // =========================
-    implementation("org.apache.commons:commons-csv:1.14.1")
-
-    // =========================
-    // Testing
-    // =========================
-    testImplementation("org.springframework.boot:spring-boot-starter-test") {
-        exclude(group = "org.junit.vintage", module = "junit-vintage-engine")
-    }
-
-    testImplementation("io.projectreactor:reactor-test")
-    testImplementation("org.testcontainers:mssqlserver:1.21.3")
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
 
-tasks.test {
-    useJUnitPlatform()
+/**
+ * Copies an artifact into Maven repository layout:
+ *
+ * groupId/artifactId/version/
+ *   artifactId-version[-classifier].ext
+ */
+fun copyToMavenRepo(
+    moduleId: ModuleComponentIdentifier,
+    artifactFile: File,
+    classifier: String? = null,
+    ext: String? = null
+) {
+    val groupPath = moduleId.group.replace('.', File.separatorChar)
+    val artifact = moduleId.module
+    val version = moduleId.version
+
+    val targetDir = File(
+        offlineRepoDir,
+        "$groupPath${File.separator}$artifact${File.separator}$version"
+    )
+    targetDir.mkdirs()
+
+    val effectiveExt = ext ?: artifactFile.extension
+    val classifierSuffix = if (!classifier.isNullOrBlank()) "-$classifier" else ""
+    val targetName = "$artifact-$version$classifierSuffix.$effectiveExt"
+
+    artifactFile.copyTo(File(targetDir, targetName), overwrite = true)
+}
+
+/**
+ * MAIN TASK:
+ * 1. Resolves all resolvable configurations (downloads everything)
+ * 2. Copies JARs into offline-repo/
+ * 3. Copies POMs via artifactView (DocsType = "pom")
+ */
+tasks.register("bootstrapOfflineRepo") {
+    group = "offline"
+    description = "Creates a portable Maven-style offline repository in ./offline-repo"
+
+    doLast {
+        println("Offline repo directory: ${offlineRepoDir.absolutePath}")
+        offlineRepoDir.mkdirs()
+
+        val resolvableConfs = configurations.filter { it.isCanBeResolved }
+
+        // ------------------------------------------------------------
+        // 1. Resolve everything (fills Gradle cache)
+        // ------------------------------------------------------------
+        println("Resolving configurations...")
+        resolvableConfs.forEach { cfg ->
+            println("  - ${cfg.name}")
+            cfg.resolve()
+        }
+
+        // ------------------------------------------------------------
+        // 2. Copy resolved JAR artifacts
+        // ------------------------------------------------------------
+        println("Copying JAR artifacts...")
+        resolvableConfs.forEach { cfg ->
+            val artifacts: Set<ResolvedArtifactResult> =
+                cfg.incoming.artifacts.artifacts
+
+            artifacts.forEach { art ->
+                val id = art.id.componentIdentifier
+                if (id is ModuleComponentIdentifier) {
+                    copyToMavenRepo(
+                        moduleId = id,
+                        artifactFile = art.file
+                    )
+                }
+            }
+        }
+
+        // ------------------------------------------------------------
+        // 3. Resolve and copy POM files (THE ONLY SAFE WAY IN GRADLE 9)
+        // ------------------------------------------------------------
+        println("Resolving and copying POM files via artifact view...")
+
+        val pomArtifacts = resolvableConfs.flatMap { cfg ->
+            cfg.incoming.artifactView {
+                attributes {
+                    attribute(
+                        Category.CATEGORY_ATTRIBUTE,
+                        objects.named(Category::class.java, Category.DOCUMENTATION)
+                    )
+                    attribute(
+                        DocsType.DOCS_TYPE_ATTRIBUTE,
+                        objects.named(DocsType::class.java, "pom")
+                    )
+                }
+            }.artifacts.artifacts
+        }
+
+        pomArtifacts.forEach { artifact ->
+            val id = artifact.id.componentIdentifier
+            if (id is ModuleComponentIdentifier) {
+                copyToMavenRepo(
+                    moduleId = id,
+                    artifactFile = artifact.file,
+                    ext = "pom"
+                )
+            }
+        }
+
+        println("Offline Maven repo successfully created at:")
+        println("   ${offlineRepoDir.absolutePath}")
+    }
+}
+
+tasks.register("verifyOfflineRepo") {
+    group = "offline"
+    description = "Verifies offline repo contains JARs (Gradle-compatible check)"
+
+    doLast {
+        val jarCount = offlineRepoDir
+            .walkTopDown()
+            .count { it.isFile && it.extension == "jar" }
+
+        println("JAR files: $jarCount")
+
+        if (jarCount == 0) {
+            error("Offline repo is incomplete (no JARs found)")
+        }
+
+        println("Offline repo verification PASSED (Gradle-compatible)")
+    }
 }
