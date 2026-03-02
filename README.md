@@ -18,5 +18,6 @@ Steps for offline build
   Verficiation
   ------------
   ./gradlew verifyOfflineRepo -PofflineRepoDir=offline-repo
-  gradlew verifyOfflineRepo -PofflineRepoDir=offline-repo
+  
+  gradle verifyOfflineRepo -PofflineRepoDir=offline-repo
   
