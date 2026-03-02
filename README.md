@@ -11,6 +11,12 @@ Steps for offline build
   -PrepoMode=bootstrap \
   -PofflineRepoDir=offline-repo
 
+  Windows
+  --------
+  gradle clean bootstrapOfflineRepo -PrepoMode=bootstrap -PofflineRepoDir=offline-repo
+
   Verficiation
   ------------
   ./gradlew verifyOfflineRepo -PofflineRepoDir=offline-repo
+  gradlew verifyOfflineRepo -PofflineRepoDir=offline-repo
+  
