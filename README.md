@@ -26,4 +26,7 @@ Docker image
 ---------------
 
   docker build -t offline-gradle-repo:1.0.0 .
+
+  Test if image is created : 
+     docker images | grep offline-gradle-repo
   
