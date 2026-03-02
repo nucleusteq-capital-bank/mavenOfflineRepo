@@ -20,4 +20,10 @@ Steps for offline build
   ./gradlew verifyOfflineRepo -PofflineRepoDir=offline-repo
   
   gradle verifyOfflineRepo -PofflineRepoDir=offline-repo
+
+
+Docker image
+---------------
+
+  docker build -t offline-gradle-repo:1.0.0 .
   
