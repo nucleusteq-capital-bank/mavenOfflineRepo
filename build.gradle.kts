@@ -42,6 +42,8 @@ repositories {
  */
 dependencies {
     implementation(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
+    implementation("org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion")
+    implementation("io.spring.gradle:dependency-management-plugin:1.1.6")
 
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-security")
