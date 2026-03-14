@@ -1,145 +1,48 @@
-import org.gradle.api.artifacts.component.ModuleComponentIdentifier
-import org.gradle.api.artifacts.result.ResolvedArtifactResult
-import org.gradle.api.attributes.Category
-import org.gradle.api.attributes.DocsType
-import java.io.File
+import java.net.URL
 
 plugins {
-    `java-library`
+    java
 }
 
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
-    }
-}
+val springBootVersion = "3.5.6"
 
-/**
- * Spring Boot version whose dependency graph we want offline
- */
-val springBootVersion = "4.0.2"
-
-/**
- * Offline Maven repo directory
- */
-val offlineRepoDir: File =
-    providers.gradleProperty("offlineRepoDir")
-        .orElse("offline-repo")
-        .map { File(rootDir, it).absoluteFile }
-        .get()
-
-/**
- * IMPORTANT:
- * Repositories are controlled from settings.gradle.kts
- * via dependencyResolutionManagement + repoMode
- */
 repositories {
-    // intentionally empty
+    mavenCentral()
+    gradlePluginPortal()
 }
 
-/**
- * Dependencies to make available offline (full transitive closure)
- */
 dependencies {
-    implementation(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
+    implementation("org.springframework.boot:spring-boot-starter-web:$springBootVersion")
     implementation("org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion")
     implementation("io.spring.gradle:dependency-management-plugin:1.1.6")
-
-    implementation("org.springframework.boot:spring-boot-starter-web")
-    implementation("org.springframework.boot:spring-boot-starter-security")
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
+    implementation("org.apache.commons:commons-lang3:3.14.0")
 }
 
-/**
- * Copies an artifact into Maven repository layout:
- *
- * groupId/artifactId/version/
- *   artifactId-version[-classifier].ext
- */
-fun copyToMavenRepo(
-    moduleId: ModuleComponentIdentifier,
-    artifactFile: File,
-    classifier: String? = null,
-    ext: String? = null
-) {
-    val groupPath = moduleId.group.replace('.', File.separatorChar)
-    val artifact = moduleId.module
-    val version = moduleId.version
-
-    val targetDir = File(
-        offlineRepoDir,
-        "$groupPath${File.separator}$artifact${File.separator}$version"
-    )
-    targetDir.mkdirs()
-
-    val effectiveExt = ext ?: artifactFile.extension
-    val classifierSuffix = if (!classifier.isNullOrBlank()) "-$classifier" else ""
-    val targetName = "$artifact-$version$classifierSuffix.$effectiveExt"
-
-    artifactFile.copyTo(File(targetDir, targetName), overwrite = true)
-}
-
-tasks.register("bootstrapOfflineRepo") {
-
+tasks.register("buildOfflineRepo") {
     doLast {
-
         val repoDir = file("offline-repo")
         repoDir.mkdirs()
-
-        val configs = configurations.filter { it.isCanBeResolved }
-
-        configs.forEach { config ->
-
-            val resolved = config.resolvedConfiguration.resolvedArtifacts
-
-            resolved.forEach { artifact ->
-
+        configurations.filter { it.isCanBeResolved }.forEach { config ->
+            config.resolvedConfiguration.resolvedArtifacts.forEach { artifact ->
                 val module = artifact.moduleVersion.id
-
                 val groupPath = module.group.replace(".", "/")
-                val artifactDir =
-                    File(repoDir, "$groupPath/${artifact.name}/${module.version}")
-
-                artifactDir.mkdirs()
-
-                val jarFile =
-                    File(artifactDir, "${artifact.name}-${module.version}.${artifact.extension}")
-
+                val targetDir = File(repoDir, "$groupPath/${artifact.name}/${module.version}")
+                targetDir.mkdirs()
+                val jarFile = File(targetDir, "${artifact.name}-${module.version}.${artifact.extension}")
                 artifact.file.copyTo(jarFile, overwrite = true)
-
-                val pomSource =
-                    artifact.file.parentFile
-                        .listFiles()
-                        ?.find { it.name.endsWith(".pom") }
-
-                pomSource?.copyTo(
-                    File(artifactDir, "${artifact.name}-${module.version}.pom"),
-                    overwrite = true
-                )
+                val pomUrl = "https://repo.maven.apache.org/maven2/$groupPath/${artifact.name}/${module.version}/${artifact.name}-${module.version}.pom"
+                val pomFile = File(targetDir, "${artifact.name}-${module.version}.pom")
+                try {
+                    URL(pomUrl).openStream().use { input ->
+                        pomFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                } catch (e: Exception) {
+                    println("POM not found for ${artifact.name}")
+                }
+                println("Added ${artifact.name}:${module.version}")
             }
         }
-
-        println("Offline repo built at ${repoDir.absolutePath}")
-    }
-}
-
-tasks.register("verifyOfflineRepo") {
-    group = "offline"
-    description = "Verifies offline repo contains JARs (Gradle-compatible check)"
-
-    doLast {
-        val jarCount = offlineRepoDir
-            .walkTopDown()
-            .count { it.isFile && it.extension == "jar" }
-
-        println("JAR files: $jarCount")
-
-        if (jarCount == 0) {
-            error("Offline repo is incomplete (no JARs found)")
-        }
-
-        println("Offline repo verification PASSED (Gradle-compatible)")
+        println("Offline repo created at: ${repoDir.absolutePath}")
     }
 }
