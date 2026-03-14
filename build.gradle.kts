@@ -81,83 +81,47 @@ fun copyToMavenRepo(
     artifactFile.copyTo(File(targetDir, targetName), overwrite = true)
 }
 
-/**
- * MAIN TASK:
- * 1. Resolves all resolvable configurations (downloads everything)
- * 2. Copies JARs into offline-repo/
- * 3. Copies POMs via artifactView (DocsType = "pom")
- */
 tasks.register("bootstrapOfflineRepo") {
-    group = "offline"
-    description = "Creates a portable Maven-style offline repository in ./offline-repo"
 
     doLast {
-        println("Offline repo directory: ${offlineRepoDir.absolutePath}")
-        offlineRepoDir.mkdirs()
 
-        val resolvableConfs = configurations.filter { it.isCanBeResolved }
+        val repoDir = file("offline-repo")
+        repoDir.mkdirs()
 
-        // ------------------------------------------------------------
-        // 1. Resolve everything (fills Gradle cache)
-        // ------------------------------------------------------------
-        println("Resolving configurations...")
-        resolvableConfs.forEach { cfg ->
-            println("  - ${cfg.name}")
-            cfg.resolve()
-        }
+        val configs = configurations.filter { it.isCanBeResolved }
 
-        // ------------------------------------------------------------
-        // 2. Copy resolved JAR artifacts
-        // ------------------------------------------------------------
-        println("Copying JAR artifacts...")
-        resolvableConfs.forEach { cfg ->
-            val artifacts: Set<ResolvedArtifactResult> =
-                cfg.incoming.artifacts.artifacts
+        configs.forEach { config ->
 
-            artifacts.forEach { art ->
-                val id = art.id.componentIdentifier
-                if (id is ModuleComponentIdentifier) {
-                    copyToMavenRepo(
-                        moduleId = id,
-                        artifactFile = art.file
-                    )
-                }
-            }
-        }
+            val resolved = config.resolvedConfiguration.resolvedArtifacts
 
-        // ------------------------------------------------------------
-        // 3. Resolve and copy POM files (THE ONLY SAFE WAY IN GRADLE 9)
-        // ------------------------------------------------------------
-        println("Resolving and copying POM files via artifact view...")
+            resolved.forEach { artifact ->
 
-        val pomArtifacts = resolvableConfs.flatMap { cfg ->
-            cfg.incoming.artifactView {
-                attributes {
-                    attribute(
-                        Category.CATEGORY_ATTRIBUTE,
-                        objects.named(Category::class.java, Category.DOCUMENTATION)
-                    )
-                    attribute(
-                        DocsType.DOCS_TYPE_ATTRIBUTE,
-                        objects.named(DocsType::class.java, "pom")
-                    )
-                }
-            }.artifacts.artifacts
-        }
+                val module = artifact.moduleVersion.id
 
-        pomArtifacts.forEach { artifact ->
-            val id = artifact.id.componentIdentifier
-            if (id is ModuleComponentIdentifier) {
-                copyToMavenRepo(
-                    moduleId = id,
-                    artifactFile = artifact.file,
-                    ext = "pom"
+                val groupPath = module.group.replace(".", "/")
+                val artifactDir =
+                    File(repoDir, "$groupPath/${artifact.name}/${module.version}")
+
+                artifactDir.mkdirs()
+
+                val jarFile =
+                    File(artifactDir, "${artifact.name}-${module.version}.${artifact.extension}")
+
+                artifact.file.copyTo(jarFile, overwrite = true)
+
+                val pomSource =
+                    artifact.file.parentFile
+                        .listFiles()
+                        ?.find { it.name.endsWith(".pom") }
+
+                pomSource?.copyTo(
+                    File(artifactDir, "${artifact.name}-${module.version}.pom"),
+                    overwrite = true
                 )
             }
         }
 
-        println("Offline Maven repo successfully created at:")
-        println("   ${offlineRepoDir.absolutePath}")
+        println("Offline repo built at ${repoDir.absolutePath}")
     }
 }
 
