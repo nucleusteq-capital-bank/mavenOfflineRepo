@@ -12,18 +12,17 @@ repositories {
 }
 
 dependencies {
+
     implementation("org.springframework.boot:spring-boot-starter-web:$springBootVersion")
     implementation("org.springframework.boot:spring-boot:$springBootVersion")
     implementation("org.springframework.boot:spring-boot-autoconfigure:$springBootVersion")
 
-    // Gradle plugin artifacts (required for offline builds)
     implementation("org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion")
-    implementation("org.springframework.boot:org.springframework.boot.gradle.plugin:$springBootVersion")
 
-    // Spring dependency management plugin
+    runtimeOnly("org.springframework.boot:org.springframework.boot.gradle.plugin:$springBootVersion")
+
     implementation("io.spring.gradle:dependency-management-plugin:1.1.6")
 
-    // Other libraries
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     implementation("org.apache.commons:commons-lang3:3.14.0")
 }
