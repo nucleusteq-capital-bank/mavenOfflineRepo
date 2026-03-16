@@ -12,14 +12,13 @@ repositories {
 }
 
 dependencies {
-
     implementation("org.springframework.boot:spring-boot-starter-web:$springBootVersion")
     implementation("org.springframework.boot:spring-boot:$springBootVersion")
     implementation("org.springframework.boot:spring-boot-autoconfigure:$springBootVersion")
 
     implementation("org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion")
 
-    runtimeOnly("org.springframework.boot:org.springframework.boot.gradle.plugin:$springBootVersion")
+    implementation("org.springframework.boot:org.springframework.boot.gradle.plugin:$springBootVersion")
 
     implementation("io.spring.gradle:dependency-management-plugin:1.1.6")
 
@@ -28,7 +27,9 @@ dependencies {
 }
 
 tasks.register("buildOfflineRepo") {
+
     doLast {
+
         val repoDir = file("offline-repo")
         repoDir.mkdirs()
 
@@ -38,11 +39,14 @@ tasks.register("buildOfflineRepo") {
         )
 
         configs.forEach { config ->
+
             config.resolvedConfiguration.resolvedArtifacts.forEach { artifact ->
+
                 val module = artifact.moduleVersion.id
                 val group = module.group
                 val artifactId = module.name
                 val version = module.version
+
                 val groupPath = group.replace(".", "/")
 
                 val targetDir = File(repoDir, "$groupPath/$artifactId/$version")
@@ -51,7 +55,9 @@ tasks.register("buildOfflineRepo") {
                 val jarFile = File(targetDir, "$artifactId-$version.${artifact.extension}")
                 artifact.file.copyTo(jarFile, overwrite = true)
 
-                val pomUrl = "https://repo.maven.apache.org/maven2/$groupPath/$artifactId/$version/$artifactId-$version.pom"
+                val pomUrl =
+                    "https://repo.maven.apache.org/maven2/$groupPath/$artifactId/$version/$artifactId-$version.pom"
+
                 val pomFile = File(targetDir, "$artifactId-$version.pom")
 
                 if (!pomFile.exists()) {
@@ -70,6 +76,8 @@ tasks.register("buildOfflineRepo") {
             }
         }
 
-        println("Offline repo created at: ${repoDir.absolutePath}")
+        println("")
+        println("Offline repo created at:")
+        println(repoDir.absolutePath)
     }
 }
