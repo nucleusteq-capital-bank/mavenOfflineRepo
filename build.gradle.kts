@@ -23,26 +23,45 @@ tasks.register("buildOfflineRepo") {
     doLast {
         val repoDir = file("offline-repo")
         repoDir.mkdirs()
-        configurations.filter { it.isCanBeResolved }.forEach { config ->
+
+        val configs = listOf(
+            configurations.compileClasspath.get(),
+            configurations.runtimeClasspath.get()
+        )
+
+        configs.forEach { config ->
             config.resolvedConfiguration.resolvedArtifacts.forEach { artifact ->
                 val module = artifact.moduleVersion.id
-                val groupPath = module.group.replace(".", "/")
-                val targetDir = File(repoDir, "$groupPath/${artifact.name}/${module.version}")
+                val group = module.group
+                val artifactId = module.name
+                val version = module.version
+                val groupPath = group.replace(".", "/")
+
+                val targetDir = File(repoDir, "$groupPath/$artifactId/$version")
                 targetDir.mkdirs()
-                val jarFile = File(targetDir, "${artifact.name}-${module.version}.${artifact.extension}")
+
+                val jarFile = File(targetDir, "$artifactId-$version.${artifact.extension}")
                 artifact.file.copyTo(jarFile, overwrite = true)
-                val pomUrl = "https://repo.maven.apache.org/maven2/$groupPath/${artifact.name}/${module.version}/${artifact.name}-${module.version}.pom"
-                val pomFile = File(targetDir, "${artifact.name}-${module.version}.pom")
-                try {
-                    URL(pomUrl).openStream().use { input ->
-                        pomFile.outputStream().use { output -> input.copyTo(output) }
+
+                val pomUrl = "https://repo.maven.apache.org/maven2/$groupPath/$artifactId/$version/$artifactId-$version.pom"
+                val pomFile = File(targetDir, "$artifactId-$version.pom")
+
+                if (!pomFile.exists()) {
+                    try {
+                        URL(pomUrl).openStream().use { input ->
+                            pomFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        println("Missing POM for $group:$artifactId:$version")
                     }
-                } catch (e: Exception) {
-                    println("POM not found for ${artifact.name}")
                 }
-                println("Added ${artifact.name}:${module.version}")
+
+                println("Added $group:$artifactId:$version")
             }
         }
+
         println("Offline repo created at: ${repoDir.absolutePath}")
     }
 }
