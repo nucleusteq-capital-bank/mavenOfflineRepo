@@ -1,95 +1,93 @@
-import java.net.URL
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-plugins {
-    java
-}
-
+// ----------------------------
+// VERSION VARIABLES
+// ----------------------------
 val springBootVersion = "3.5.6"
+val dependencyManagementVersion = "1.1.6"
+val javaVersion = "21"
 
-repositories {
-    mavenCentral()
-    gradlePluginPortal()
-}
+// ----------------------------
+// BUILDSCRIPT (PLUGIN LOADING)
+// ----------------------------
+buildscript {
 
-val offline by configurations.creating
+    val springBootVersion: String by extra
+    val dependencyManagementVersion: String by extra
 
-dependencies {
-    // Spring runtime
-    offline("org.springframework.boot:spring-boot-starter-web:$springBootVersion")
-    offline("org.springframework.boot:spring-boot:$springBootVersion")
-    offline("org.springframework.boot:spring-boot-autoconfigure:$springBootVersion")
-
-    // Gradle plugin jar
-    offline("org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion")
-
-    // Other libs
-    offline("io.spring.gradle:dependency-management-plugin:1.1.6")
-    offline("com.fasterxml.jackson.core:jackson-databind:2.17.2")
-    offline("org.apache.commons:commons-lang3:3.14.0")
-}
-
-tasks.register("buildOfflineRepo") {
-
-    doLast {
-
-        val repoDir = file("offline-repo")
-        repoDir.mkdirs()
-
-        // Resolve normal artifacts
-        configurations["offline"].resolvedConfiguration.resolvedArtifacts.forEach { artifact ->
-
-            val module = artifact.moduleVersion.id
-            val group = module.group
-            val artifactId = module.name
-            val version = module.version
-
-            val groupPath = group.replace(".", "/")
-
-            val targetDir = File(repoDir, "$groupPath/$artifactId/$version")
-            targetDir.mkdirs()
-
-            val jarFile = File(targetDir, "$artifactId-$version.${artifact.extension}")
-            artifact.file.copyTo(jarFile, overwrite = true)
-
-            val pomUrl =
-                "https://repo.maven.apache.org/maven2/$groupPath/$artifactId/$version/$artifactId-$version.pom"
-
-            val pomFile = File(targetDir, "$artifactId-$version.pom")
-
-            if (!pomFile.exists()) {
-                try {
-                    URL(pomUrl).openStream().use { input ->
-                        pomFile.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                } catch (e: Exception) {
-                    println("Missing POM for $group:$artifactId:$version")
-                }
-            }
-
-            println("Added $group:$artifactId:$version")
+    repositories {
+        maven {
+            url = uri("$rootDir/offline-repo")
         }
-
-        // Download Spring Boot plugin marker
-        val markerPath =
-            "org/springframework/boot/org.springframework.boot.gradle.plugin/$springBootVersion"
-
-        val markerDir = File(repoDir, markerPath)
-        markerDir.mkdirs()
-
-        val markerPom =
-            "https://repo.maven.apache.org/maven2/$markerPath/org.springframework.boot.gradle.plugin-$springBootVersion.pom"
-
-        URL(markerPom).openStream().use { input ->
-            File(markerDir, "org.springframework.boot.gradle.plugin-$springBootVersion.pom")
-                .outputStream().use { output ->
-                    input.copyTo(output)
-                }
-        }
-
-        println("")
-        println("Offline repo created at:")
-        println(repoDir.absolutePath)
     }
+
+    dependencies {
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion")
+        classpath("io.spring.gradle:dependency-management-plugin:$dependencyManagementVersion")
+    }
+}
+
+// ----------------------------
+// APPLY PLUGINS
+// ----------------------------
+apply(plugin = "java")
+apply(plugin = "org.springframework.boot")
+apply(plugin = "io.spring.dependency-management")
+
+// ----------------------------
+// PROJECT METADATA
+// ----------------------------
+group = "com.example"
+version = "1.0.0"
+
+// ----------------------------
+// JAVA CONFIG
+// ----------------------------
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(javaVersion))
+    }
+}
+
+// ----------------------------
+// REPOSITORIES
+// ----------------------------
+repositories {
+    maven {
+        url = uri("$rootDir/offline-repo")
+    }
+}
+
+// ----------------------------
+// DEPENDENCY VERSIONS
+// ----------------------------
+val lombokVersion = "1.18.32"
+val junitVersion = "5.10.2"
+
+// ----------------------------
+// DEPENDENCIES
+// ----------------------------
+dependencies {
+
+    implementation("org.springframework.boot:spring-boot-starter-web:$springBootVersion")
+
+    compileOnly("org.projectlombok:lombok:$lombokVersion")
+    annotationProcessor("org.projectlombok:lombok:$lombokVersion")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test:$springBootVersion")
+    testImplementation("org.junit.jupiter:junit-jupiter:$junitVersion")
+}
+
+// ----------------------------
+// TEST CONFIG
+// ----------------------------
+tasks.test {
+    useJUnitPlatform()
+}
+
+// ----------------------------
+// JAR CONFIG
+// ----------------------------
+tasks.bootJar {
+    archiveFileName.set("app.jar")
 }
