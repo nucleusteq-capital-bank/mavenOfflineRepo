@@ -14,11 +14,14 @@ repositories {
 }
 
 dependencies {
+
     implementation("org.springframework.boot:spring-boot-starter-web:$springBootVersion")
     implementation("org.springframework.boot:spring-boot:$springBootVersion")
     implementation("org.springframework.boot:spring-boot-autoconfigure:$springBootVersion")
 
     implementation("org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion")
+
+    implementation("org.springframework.boot:org.springframework.boot.gradle.plugin:$springBootVersion")
 
     implementation("io.spring.gradle:dependency-management-plugin:1.1.6")
 
